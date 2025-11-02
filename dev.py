@@ -1,173 +1,111 @@
-{
- "cells": [
-  {
-   "cell_type": "code",
-   "execution_count": 1,
-   "id": "7119b93d-d46a-4432-8545-00cf5ec841ef",
-   "metadata": {},
-   "outputs": [
-    {
-     "name": "stdout",
-     "output_type": "stream",
-     "text": [
-      "🚀 Flask server started successfully!\n",
-      "🌐 Open: http://127.0.0.1:5000/predict\n",
-      " * Serving Flask app '__main__'\n",
-      " * Debug mode: off\n"
-     ]
-    },
-    {
-     "name": "stderr",
-     "output_type": "stream",
-     "text": [
-      "WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.\n",
-      " * Running on http://127.0.0.1:5000\n",
-      "Press CTRL+C to quit\n",
-      "127.0.0.1 - - [02/Nov/2025 11:09:35] \"GET /predict HTTP/1.1\" 200 -\n",
-      "127.0.0.1 - - [02/Nov/2025 11:09:35] \"GET /static/bg1.webp HTTP/1.1\" 304 -\n",
-      "127.0.0.1 - - [02/Nov/2025 11:09:36] \"GET /favicon.ico HTTP/1.1\" 404 -\n"
-     ]
-    }
-   ],
-   "source": [
-    "from flask import Flask, render_template_string, request\n",
-    "from threading import Thread, Lock\n",
-    "import pickle\n",
-    "import numpy as np\n",
-    "import pandas as pd\n",
-    "import shap\n",
-    "import time\n",
-    "\n",
-    "app = Flask(__name__)\n",
-    "\n",
-    "# --- HTML path ---\n",
-    "html_path = r\"C:\\Users\\Afnan Khan\\Desktop\\New folder\\New folder\\back.html\"\n",
-    "with open(html_path, \"r\", encoding=\"latin-1\") as f:\n",
-    "    HTML_FORM = f.read()\n",
-    "\n",
-    "# --- Model load ---\n",
-    "model_path = r\"C:\\Users\\Afnan Khan\\Desktop\\New folder\\New folder\\fraud_model.pkl\"\n",
-    "with open(model_path, \"rb\") as file:\n",
-    "    model = pickle.load(file)\n",
-    "\n",
-    "# --- SHAP explainer ---\n",
-    "explainer = shap.Explainer(model)\n",
-    "\n",
-    "# --- TPS counter ---\n",
-    "request_count = 0\n",
-    "start_time = time.time()\n",
-    "lock = Lock()\n",
-    "\n",
-    "@app.route('/predict', methods=['GET', 'POST'])\n",
-    "def predict():\n",
-    "    global request_count, start_time\n",
-    "    result = None\n",
-    "    ratios = {}\n",
-    "\n",
-    "    if request.method == 'POST':\n",
-    "        try:\n",
-    "            with lock:\n",
-    "                request_count += 1\n",
-    "                elapsed = time.time() - start_time\n",
-    "                if elapsed >= 1:\n",
-    "                    tps = request_count / elapsed\n",
-    "                    print(f\"⚙️ TPS: {tps:.2f}\")\n",
-    "                    request_count = 0\n",
-    "                    start_time = time.time()\n",
-    "\n",
-    "            # --- Main fields ---\n",
-    "            data = {k: float(request.form.get(k, 0)) for k in [\n",
-    "                \"Transaction_Amount\", \"IP_Risk_Score\", \"VPN_Flag\",\n",
-    "                \"Geo_Match\", \"Avg_Amt_1h\", \"Velocity_Score\"\n",
-    "            ]}\n",
-    "\n",
-    "            # --- Ratio calculation when OK pressed ---\n",
-    "            if \"calc\" in request.form:\n",
-    "                ratios[\"Amt_vs_AvgRatio\"] = data[\"Transaction_Amount\"] / (data[\"Avg_Amt_1h\"] + 1e-6)\n",
-    "                ratios[\"Velocity_IP_Interaction\"] = data[\"Velocity_Score\"] * data[\"IP_Risk_Score\"]\n",
-    "                ratios[\"Txn_Foreign_Ratio\"] = data[\"VPN_Flag\"] / (data[\"Geo_Match\"] + 1e-6)\n",
-    "                return render_template_string(HTML_FORM, result=None, ratios=ratios)\n",
-    "\n",
-    "            # --- Ratios for prediction ---\n",
-    "            data[\"Amt_vs_AvgRatio\"] = float(request.form.get(\"Amt_vs_AvgRatio\", 0))\n",
-    "            data[\"Velocity_IP_Interaction\"] = float(request.form.get(\"Velocity_IP_Interaction\", 0))\n",
-    "            data[\"Txn_Foreign_Ratio\"] = float(request.form.get(\"Txn_Foreign_Ratio\", 0))\n",
-    "\n",
-    "            x_sample = pd.DataFrame([data])\n",
-    "            feature_names = list(data.keys())\n",
-    "\n",
-    "            # --- Prediction ---\n",
-    "            prediction = model.predict(x_sample[feature_names])[0]\n",
-    "\n",
-    "            shap_values = explainer(x_sample[feature_names])\n",
-    "            reason_codes = pd.DataFrame()\n",
-    "            reason_codes[\"Risk_Score\"] = np.abs(shap_values.values).mean(axis=1)\n",
-    "\n",
-    "            top_features = np.argsort(-np.abs(shap_values.values), axis=1)[:, :3]\n",
-    "            top_reasons = [\n",
-    "                \", \".join(x_sample.columns[top_features[i]].tolist())\n",
-    "                for i in range(len(x_sample))\n",
-    "            ]\n",
-    "            reason_codes[\"Top_Reason_Codes\"] = top_reasons\n",
-    "\n",
-    "            conditions = [\n",
-    "                reason_codes[\"Risk_Score\"] < 0.05,\n",
-    "                (reason_codes[\"Risk_Score\"] >= 0.05) & (reason_codes[\"Risk_Score\"] < 0.10),\n",
-    "                reason_codes[\"Risk_Score\"] >= 0.10\n",
-    "            ]\n",
-    "            choices = [\"Low\", \"Medium\", \"High\"]\n",
-    "            reason_codes[\"Risk_Level\"] = np.select(conditions, choices, default=\"Low\")\n",
-    "\n",
-    "            if prediction == 1:\n",
-    "                result = (\n",
-    "                    f\"⚠️ <b>Fraud Detected!</b>\"\n",
-    "                    f\"<br><b>Risk Level:</b> {reason_codes['Risk_Level'][0]}\"\n",
-    "                    f\"<br><b>Top Factors:</b> {reason_codes['Top_Reason_Codes'][0]}\"\n",
-    "                    f\"<br><b>Risk Score:</b> {reason_codes['Risk_Score'][0]:.3f}\"\n",
-    "                )\n",
-    "            else:\n",
-    "                result = (\n",
-    "                    f\"✅ <b>Transaction Safe.</b>\"\n",
-    "                    f\"<br><b>Risk Level:</b> {reason_codes['Risk_Level'][0]}\"\n",
-    "                    f\"<br><b>Top Factors:</b> {reason_codes['Top_Reason_Codes'][0]}\"\n",
-    "                    f\"<br><b>Risk Score:</b> {reason_codes['Risk_Score'][0]:.3f}\"\n",
-    "                )\n",
-    "\n",
-    "        except Exception as e:\n",
-    "            result = f\"❌ Error: {str(e)}\"\n",
-    "\n",
-    "    return render_template_string(HTML_FORM, result=result, ratios=ratios)\n",
-    "\n",
-    "\n",
-    "# --- Flask thread ---\n",
-    "def run_server():\n",
-    "    app.run(debug=False, use_reloader=False, threaded=True)\n",
-    "\n",
-    "Thread(target=run_server).start()\n",
-    "print(\"🚀 Flask server started successfully!\")\n",
-    "print(\"🌐 Open: http://127.0.0.1:5000/predict\")\n"
-   ]
-  }
- ],
- "metadata": {
-  "kernelspec": {
-   "display_name": "Python [conda env:base] *",
-   "language": "python",
-   "name": "conda-base-py"
-  },
-  "language_info": {
-   "codemirror_mode": {
-    "name": "ipython",
-    "version": 3
-   },
-   "file_extension": ".py",
-   "mimetype": "text/x-python",
-   "name": "python",
-   "nbconvert_exporter": "python",
-   "pygments_lexer": "ipython3",
-   "version": "3.13.5"
-  }
- },
- "nbformat": 4,
- "nbformat_minor": 5
-}
+from flask import Flask, render_template_string, request
+import pickle
+import numpy as np
+import pandas as pd
+import shap
+import time
+import os
+
+app = Flask(__name__)
+
+# --- HTML path ---
+html_path = os.path.join(os.path.dirname(__file__), "back.html")
+with open(html_path, "r", encoding="utf-8") as f:
+    HTML_FORM = f.read()
+
+# --- Model load ---
+model_path = os.path.join(os.path.dirname(__file__), "fraud_model.pkl")
+with open(model_path, "rb") as file:
+    model = pickle.load(file)
+
+# --- SHAP explainer ---
+explainer = shap.Explainer(model)
+
+# --- TPS counter ---
+request_count = 0
+start_time = time.time()
+
+@app.route('/predict', methods=['GET', 'POST'])
+def predict():
+    global request_count, start_time
+    result = None
+    ratios = {}
+
+    if request.method == 'POST':
+        try:
+            request_count += 1
+            elapsed = time.time() - start_time
+            if elapsed >= 1:
+                tps = request_count / elapsed
+                print(f"⚙️ TPS: {tps:.2f}")
+                request_count = 0
+                start_time = time.time()
+
+            # --- Main fields ---
+            data = {k: float(request.form.get(k, 0)) for k in [
+                "Transaction_Amount", "IP_Risk_Score", "VPN_Flag",
+                "Geo_Match", "Avg_Amt_1h", "Velocity_Score"
+            ]}
+
+            # --- Ratio calculation when OK pressed ---
+            if "calc" in request.form:
+                ratios["Amt_vs_AvgRatio"] = data["Transaction_Amount"] / (data["Avg_Amt_1h"] + 1e-6)
+                ratios["Velocity_IP_Interaction"] = data["Velocity_Score"] * data["IP_Risk_Score"]
+                ratios["Txn_Foreign_Ratio"] = data["VPN_Flag"] / (data["Geo_Match"] + 1e-6)
+                return render_template_string(HTML_FORM, result=None, ratios=ratios)
+
+            # --- Ratios for prediction ---
+            data["Amt_vs_AvgRatio"] = float(request.form.get("Amt_vs_AvgRatio", 0))
+            data["Velocity_IP_Interaction"] = float(request.form.get("Velocity_IP_Interaction", 0))
+            data["Txn_Foreign_Ratio"] = float(request.form.get("Txn_Foreign_Ratio", 0))
+
+            x_sample = pd.DataFrame([data])
+            feature_names = list(data.keys())
+
+            # --- Prediction ---
+            prediction = model.predict(x_sample[feature_names])[0]
+
+            shap_values = explainer(x_sample[feature_names])
+            reason_codes = pd.DataFrame()
+            reason_codes["Risk_Score"] = np.abs(shap_values.values).mean(axis=1)
+
+            top_features = np.argsort(-np.abs(shap_values.values), axis=1)[:, :3]
+            top_reasons = [
+                ", ".join(x_sample.columns[top_features[i]].tolist())
+                for i in range(len(x_sample))
+            ]
+            reason_codes["Top_Reason_Codes"] = top_reasons
+
+            conditions = [
+                reason_codes["Risk_Score"] < 0.05,
+                (reason_codes["Risk_Score"] >= 0.05) & (reason_codes["Risk_Score"] < 0.10),
+                reason_codes["Risk_Score"] >= 0.10
+            ]
+            choices = ["Low", "Medium", "High"]
+            reason_codes["Risk_Level"] = np.select(conditions, choices, default="Low")
+
+            if prediction == 1:
+                result = (
+                    f"⚠️ <b>Fraud Detected!</b>"
+                    f"<br><b>Risk Level:</b> {reason_codes['Risk_Level'][0]}"
+                    f"<br><b>Top Factors:</b> {reason_codes['Top_Reason_Codes'][0]}"
+                    f"<br><b>Risk Score:</b> {reason_codes['Risk_Score'][0]:.3f}"
+                )
+            else:
+                result = (
+                    f"✅ <b>Transaction Safe.</b>"
+                    f"<br><b>Risk Level:</b> {reason_codes['Risk_Level'][0]}"
+                    f"<br><b>Top Factors:</b> {reason_codes['Top_Reason_Codes'][0]}"
+                    f"<br><b>Risk Score:</b> {reason_codes['Risk_Score'][0]:.3f}"
+                )
+
+        except Exception as e:
+            result = f"❌ Error: {str(e)}"
+
+    return render_template_string(HTML_FORM, result=result, ratios=ratios)
+
+
+# --- Run the app on Render ---
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
