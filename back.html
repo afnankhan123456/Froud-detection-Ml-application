@@ -1,206 +1,81 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Transaction Fraud Detection</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fraud Detection App</title>
     <style>
-        .title-text {
-            color: #ff0000;
-            text-shadow: 0 0 15px #ff4d4d;
-            font-size: 32px;
-            margin: 0;
-        }
-
-        .title-row {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 15px;
-            margin-top: 20px;
-        }
-
-        .fraud-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            background: linear-gradient(135deg, #660000, #ff0000);
-            color: #fff;
-            padding: 6px 12px;
-            border-radius: 999px;
-            font-weight: 700;
-            box-shadow: 0 6px 18px rgba(255, 0, 0, 0.35);
-            font-size: 14px;
-            line-height: 1;
-        }
-
-        .fraud-badge .icon {
-            background: rgba(255, 255, 255, 0.12);
-            padding: 6px;
-            border-radius: 50%;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 28px;
-            height: 28px;
-            font-size: 16px;
-        }
-
         body {
             font-family: Arial, sans-serif;
-            background: url("{{ url_for('static', filename='bg1.webp') }}") no-repeat center center fixed;
-            background-size: cover;
-            padding: 40px;
-            color: #e0f7fa;
-        }
-
-        .container {
-            background: linear-gradient(135deg, rgba(255,255,255,0.2), rgba(255,255,255,0.05));
-            backdrop-filter: blur(10px);
-            padding: 30px;
-            border-radius: 16px;
-            width: 600px;
-            margin: auto;
-            margin-top: 40px;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.4);
-            border: 1px solid rgba(255,255,255,0.3);
-        }
-
-        label {
-            font-weight: bold;
-            display: block;
-            margin-top: 10px;
-            color: #b3e5fc;
-        }
-
-        input {
-            padding: 8px;
-            border-radius: 6px;
-            border: 1px solid #ccc;
-            margin: 5px;
-            width: 120px;
-            background: rgba(255,255,255,0.1);
-            color: #fff;
-        }
-
-        .ratio-line {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin: 10px 0;
-            color: #e0f7fa;
-            font-weight: bold;
-        }
-
-        button {
-            background: linear-gradient(135deg, #00bcd4, #008394);
+            background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
             color: white;
-            padding: 8px 12px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            margin: 0 10px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-        }
-
-        button:hover {
-            background: linear-gradient(135deg, #0097a7, #006978);
-        }
-
-        .main-btn {
-            width: 100%;
-            padding: 12px;
-            margin-top: 20px;
-            font-size: 16px;
-        }
-
-        .result {
-            margin-top: 20px;
             text-align: center;
-            color: #80deea;
-            font-size: 18px;
+            padding: 40px;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 450px;
+            margin: auto;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            color: #00e6e6;
+        }
+        label {
+            display: block;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+        input {
+            width: 90%;
+            padding: 10px;
+            margin-top: 5px;
+            border: none;
+            border-radius: 10px;
+            outline: none;
+        }
+        .main-btn {
+            margin-top: 25px;
+            padding: 12px 20px;
+            background-color: #00e6e6;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            color: black;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        .main-btn:hover {
+            background-color: #00b3b3;
+        }
+        .icon {
+            font-size: 24px;
+            color: #00e6e6;
+            margin-bottom: 10px;
         }
     </style>
-
-    <script>
-        function calcAmtRatio() {
-            let Transaction_Amount = parseFloat(document.getElementById("Transaction_Amount").value) || 0;
-            let Avg_Amt_1h = parseFloat(document.getElementById("Avg_Amt_1h").value) || 0;
-            let result = Transaction_Amount / (Avg_Amt_1h + 1e-6);
-            document.getElementById("Amt_vs_AvgRatio").value = result.toFixed(4);
-        }
-
-        function calcVelocityRatio() {
-            let Velocity_Score = parseFloat(document.getElementById("Velocity_Score").value) || 0;
-            let IP_Risk_Score = parseFloat(document.getElementById("IP_Risk_Score").value) || 0;
-            let result = Velocity_Score * IP_Risk_Score;
-            document.getElementById("Velocity_IP_Interaction").value = result.toFixed(4);
-        }
-
-        function calcTxnRatio() {
-            let VPN_Flag = parseFloat(document.getElementById("VPN_Flag").value) || 0;
-            let Geo_Match = parseFloat(document.getElementById("Geo_Match").value) || 0;
-            let result = VPN_Flag / (Geo_Match + 1e-6);
-            document.getElementById("Txn_Foreign_Ratio").value = result.toFixed(4);
-        }
-    </script>
 </head>
-
 <body>
-    <div class="title-row">
-        <h2 class="title-text">Transaction Fraud Detection</h2>
-        <div class="fraud-badge" title="Fraud alert">
-            <span class="icon">??????</span>
-            <span>FRAUD</span>
-        </div>
-    </div>
-
     <div class="container">
+        <span class="icon">⚡</span>
+        <h1>Fraud Detection</h1>
         <form action="/predict" method="post">
+            <label>Transaction Amount:</label>
+            <input type="number" name="Transaction_Amount" required>
 
-            <label>Transaction_Amount:</label>
-            <input type="number" step="0.01" id="Transaction_Amount" name="Transaction_Amount" required>
+            <label>IP Risk Score:</label>
+            <input type="number" name="IP_Risk_Score" required>
 
-            <label>IP_Risk_Score:</label>
-            <input type="number" step="0.01" id="IP_Risk_Score" name="IP_Risk_Score" required>
+            <label>VPN Flag (0 or 1):</label>
+            <input type="number" name="VPN_Flag" required>
 
-            <label>VPN_Flag:</label>
-            <input type="number" step="0.01" id="VPN_Flag" name="VPN_Flag" required>
+            <label>Velocity Score:</label>
+            <input type="number" name="Velocity_Score" required>
 
-            <label>Geo_Match:</label>
-            <input type="number" step="0.01" id="Geo_Match" name="Geo_Match" required>
-
-            <label>Avg_Amt_1h:</label>
-            <input type="number" step="0.01" id="Avg_Amt_1h" name="Avg_Amt_1h" required>
-
-            <label>Velocity_Score:</label>
-            <input type="number" step="0.01" id="Velocity_Score" name="Velocity_Score" required>
-
-            <hr style="margin:20px 0; border:1px solid rgba(255,255,255,0.3);">
-
-            <div class="ratio-line">
-                <span>[Transaction_Amount] / [Avg_Amt_1h]</span>
-                <button type="button" onclick="calcAmtRatio()">OK</button>
-                <input type="number" id="Amt_vs_AvgRatio" name="Amt_vs_AvgRatio" placeholder="Amt_vs_AvgRatio" readonly>
-            </div>
-
-            <div class="ratio-line">
-                <span>[Velocity_Score] � [IP_Risk_Score]</span>
-                <button type="button" onclick="calcVelocityRatio()">OK</button>
-                <input type="number" id="Velocity_IP_Interaction" name="Velocity_IP_Interaction" placeholder="Velocity_IP_Interaction" readonly>
-            </div>
-
-            <div class="ratio-line">
-                <span>[VPN_Flag] / [Geo_Match]</span>
-                <button type="button" onclick="calcTxnRatio()">OK</button>
-                <input type="number" id="Txn_Foreign_Ratio" name="Txn_Foreign_Ratio" placeholder="Txn_Foreign_Ratio" readonly>
-            </div>
-
-            <button class="main-btn" type="submit">?????? Predict Fraud</button>
+            <button class="main-btn" type="submit">⚡ Predict Fraud</button>
         </form>
-
-        {% if result %}
-            <div class="result">{{ result|safe }}</div>
-        {% endif %}
     </div>
 </body>
 </html>
