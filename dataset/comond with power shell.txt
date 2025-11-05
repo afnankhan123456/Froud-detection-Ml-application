@@ -1,0 +1,9 @@
+Set-Location "C:\kafka"
+
+Start-Process -FilePath ".\bin\windows\kafka-storage.bat" -ArgumentList "format","-t","1234567890abcdef","-c","config\server.properties","--standalone" -Wait -NoNewWindow
+
+.\bin\windows\kafka-server-start.bat .\config\server.properties
+    
+
+
+kaffa and java download
